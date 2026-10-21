@@ -103,7 +103,7 @@ resource "aws_db_instance" "this" {
   allocated_storage     = var.allocated_storage
   max_allocated_storage = var.allocated_storage * 3
   storage_encrypted     = true
-  publicly_accessible   = false
+  publicly_accessible     = false
   multi_az              = var.multi_az
 
   db_subnet_group_name   = aws_db_subnet_group.this.name

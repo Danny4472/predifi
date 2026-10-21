@@ -27,8 +27,8 @@ This document defines regional disaster recovery objectives, procedures, and tar
 |---------|------|------------|----------|-------------------|
 | **Frontend** | Web UI | High | CloudFront / S3 / ALB | Multi-region capable (via CDN) |
 | **Backend API** | REST API | Critical | ASG in AWS region | Single-region only (multi-AZ within region) |
-| **PostgreSQL DB** | Data Store | Critical | RDS Multi-AZ | Automated failover (AZ-level), manual PITR |
-| **Redis Cache** | Cache / State | Medium | ElastiCache | Automatic failover (replica replication) |
+| **PostgreSQL DB** | Authoritative data store | Critical | Encrypted RDS Multi-AZ | 35-day production PITR, monthly isolated restore drill |
+| **Redis** | Cache, rate limits, and JWT revocation keys | Medium | Encrypted ElastiCache replication group with snapshots | Cache reconstructs from PostgreSQL; expiring counters reset; revocation keys are restored from the latest snapshot and must be monitored |
 | **Stellar RPC** | Blockchain Gateway | Critical | External endpoint | Manual DNS failover to alternate RPC |
 | **DNS (Route53)** | Service Discovery | Critical | Route53 (global) | Global service, no failover needed |
 | **TLS Certificates** | Security | Critical | ACM (region-scoped) | Regional; requires re-issuance for new region |
@@ -69,14 +69,25 @@ ASG EC2 Instances (private subnet) ← Security Group ingress
 
 | Service | RPO | Current Capability | Gap |
 |---------|-----|-------------------|-----|
-| **PostgreSQL** | 1 hour | 7-day automated backups + point-in-time recovery (PITR) | No cross-region replication; PITR within same region only |
-| **Redis** | 0 (ephemeral) | Replication group with synchronous replication | Non-persistent cache; data loss acceptable |
+| **PostgreSQL** | 1 hour | Production RDS point-in-time recovery with 35-day retention; restore drill measures latest-restorable-point age | Cross-region copy is a separate regional recovery procedure |
+| **Redis cache and rate limits** | 60 seconds for cached views; one rate-limit window for counters | TTL-bound data, volatile-LRU eviction, daily snapshots | Rebuild market views from PostgreSQL; rate limits restart at zero after loss |
+| **Redis JWT revocations** | Snapshot recovery point; not a market/payment authority | Daily snapshots plus fail-closed token operations when Redis is unavailable | A restore can lose revocations written after the snapshot; assess token/key rotation before returning traffic |
 | **Transaction Ledger** | 0 (immutable) | Stellar blockchain (on-chain state immutable) | Replicated across Stellar network; no action needed |
 | **Configuration/Secrets** | 30 minutes | AWS Secrets Manager, versioned parameters | Not replicated across regions; manual restore needed |
 
 ---
 
 ## 3. Single AZ Failure (Within-Region High Availability)
+
+### Redis Data and Recovery Semantics
+
+PostgreSQL and the Stellar ledger remain the authoritative sources for market and payment state. Redis contains derived market views (TTL 30-60 seconds), rate-limit counters (one configured window), JWT revocation IDs (up to token expiry), and per-user revoke-before markers (30 days). All application keys expire; `volatile-lru` allows expired/expiring entries to be evicted instead of allowing the cache to consume memory without bound. Redis snapshots are retained for one day in staging and seven days in production.
+
+After restart or failover, cache entries and rate-limit counters may be absent and are reconstructed or reset. Watch Redis readiness and operation-error metrics, API database load, and authentication failure rates. Do not route traffic to a restored Redis node until it is reachable and the application health checks are observable. Since a snapshot may not contain the newest JWT revocation entries, use the documented token/key rotation response when revocation freshness cannot be established. Redis must never be used as the only record of a market, payment, or prediction mutation.
+
+Run the scheduled PostgreSQL restore workflow monthly against an isolated private restore subnet and security group using a dedicated OIDC role. The exercise owner is the Database/Infrastructure on-call. Configure repository variable `DR_REGION`, `DR_SOURCE_DB_INSTANCE_IDENTIFIER`, `DR_SUBNET_GROUP`, `DR_SECURITY_GROUP_ID`, `DR_DB_INSTANCE_CLASS`, and `DR_DB_NAME`, plus secret `DR_RESTORE_ROLE_ARN`. The `restore-drill` self-hosted runner must have AWS CLI, `jq`, `openssl`, `psql`, and private network access to the target subnet; do not provision production application credentials on the runner. Scope the OIDC role to inspect point-in-time recovery metadata for the named source and restore/describe/modify/delete only drill instances in the isolated subnet; it must not modify or delete the source database. The workflow restores to the latest RDS restorable point-in-time, rotates the restored instance's master password, checks relational/data invariants, records achieved RPO/RTO and row counts, and deletes the temporary database. Its 90-day JSON evidence artifact contains no credentials or database dump. Do not connect the drill to production traffic or reuse application credentials.
+
+For a Redis recovery exercise, restart or fail over the staging replication group under a change window. Before the restart, record PostgreSQL pool/prediction counts and Redis readiness/error metrics. After recovery, confirm those database counts and the API's market data are unchanged, confirm rate-limit counters resume as empty/expiring windows, and check Redis readiness plus operation errors return to baseline. Treat missing revocation keys as a security event: rotate the relevant signing key or revoke affected sessions before resuming authentication if their freshness cannot be proven. Record the observed recovery time and any cache-driven database load increase.
 
 ### Current State
 

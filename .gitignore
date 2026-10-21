@@ -8,6 +8,13 @@ PULL_REQUEST_AUDIT_1408.md
 PULL_REQUEST_STATE_MANAGEMENT_1406.md
 pr-description.md
 
+# Terraform local state, plans, and environment-specific backend configuration
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/*.tfplan
+**/backend.hcl
+
 # Local documentation generated during implementation — not part of the repository history
 **/VALIDATION_ENHANCEMENTS.md
 **/DEPENDENCY_AUDIT_LOCAL.md

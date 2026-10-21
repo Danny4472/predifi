@@ -6,6 +6,26 @@
 **Primary Region**: [us-east-1]  
 **Alternate Region**: [us-west-2]  
 
+## 0. PostgreSQL Backup Restore Drill Evidence
+
+**Scheduled cadence**: Monthly (`PostgreSQL Restore Drill` workflow)
+**Exercise owner**: [Database / Infrastructure owner]
+**AWS account and restore region**: [NON-PRODUCTION ACCOUNT / REGION]
+**Isolated subnet group and security group**: [IDENTIFIERS]
+**Restore role**: [DEDICATED OIDC ROLE ARN]
+**Evidence artifact**: [WORKFLOW RUN / ARTIFACT URL]
+**Production application credentials used**: No
+
+| Measurement | Target | Achieved |
+|-------------|--------|----------|
+| Latest restorable point age (RPO) | 3,600 seconds | [seconds] |
+| Restore and validation duration (RTO) | 14,400 seconds | [seconds] |
+| Pools / predictions restored | Informational | [counts] |
+| Orphan predictions / negative totals / negative amounts | 0 / 0 / 0 | [counts] |
+| Temporary instance cleanup | Required | [timestamp / status] |
+
+Record failed drills as well as successful ones. Keep only the JSON evidence artifact; never include database passwords, Terraform state, or database dumps. An RPO/RTO miss requires an owner and remediation date before closing the exercise.
+
 ---
 
 ## 1. Exercise Participants

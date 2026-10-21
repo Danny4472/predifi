@@ -117,8 +117,9 @@ This directory contains comprehensive disaster recovery (DR) documentation for t
 
 | Service | RPO | Capability |
 |---------|-----|-----------|
-| **PostgreSQL** | 1 hour | 7-day automated backups + 35-day PITR |
-| **Redis Cache** | 0 (ephemeral) | Non-persistent; cache miss acceptable |
+| **PostgreSQL** | 1 hour | Production 35-day automated backup/PITR retention; monthly isolated restore drill |
+| **Redis cache/rate limits** | 60 seconds / one rate-limit window | TTL-bound keys, volatile-LRU eviction, daily snapshots |
+| **Redis JWT revocations** | Latest snapshot recovery point | Daily snapshots; fail-closed token operations while unavailable and rotate/revoke sessions if revocation freshness is uncertain |
 | **Blockchain State** | 0 (immutable) | Replicated on Stellar network |
 | **Configuration/Secrets** | 30 minutes | Secrets Manager with cross-region replication (goal) |
 
